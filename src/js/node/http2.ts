@@ -2502,7 +2502,13 @@ class Http2Stream extends Duplex {
     // push, regardless of the server-settings default.
     const session = this[bunHTTP2Session];
     return (
-      session != null && session.type === 0 && !!session.remoteSettings?.enablePush && !this.destroyed && !this.closed
+      session != null &&
+      session.type === 0 &&
+      !session.closed &&
+      !session.destroyed &&
+      !!session.remoteSettings?.enablePush &&
+      !this.destroyed &&
+      !this.closed
     );
   }
   close(code, callback) {
@@ -4584,6 +4590,12 @@ class ServerHttp2Session extends Http2Session {
     validateFunction(callback, "callback");
 
     const cb = makeHttp2Ping(callback);
+    // node: a ping issued while the session is still connecting or after close() is cancelled
+    // on the next tick and never reaches the wire.
+    if (this.connecting || this.closed) {
+      process.nextTick(cb, $ERR_HTTP2_PING_CANCEL(), 0, payload);
+      return;
+    }
     const parser = this.#parser;
     if (!parser || !this[bunHTTP2Socket]) {
       process.nextTick(cb, $ERR_HTTP2_PING_CANCEL(), 0, payload);
@@ -5511,6 +5523,12 @@ class ClientHttp2Session extends Http2Session {
     validateFunction(callback, "callback");
 
     const cb = makeHttp2Ping(callback);
+    // node: a ping issued while the session is still connecting or after close() is cancelled
+    // on the next tick and never reaches the wire.
+    if (this.connecting || this.closed) {
+      process.nextTick(cb, $ERR_HTTP2_PING_CANCEL(), 0, payload);
+      return;
+    }
     const parser = this.#parser;
     if (!parser || !this[bunHTTP2Socket]) {
       process.nextTick(cb, $ERR_HTTP2_PING_CANCEL(), 0, payload);
