@@ -112,6 +112,8 @@ private:
 public:
     
     HttpFlags flags;
+
+    bool isParsing(struct us_socket_t *s) const { return flags.isParsingHttp && parsingSocket == s; }
 };
 
 }

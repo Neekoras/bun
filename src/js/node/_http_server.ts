@@ -32,6 +32,7 @@ const {
   kInternalSocketData,
   serverSymbol,
   kHandle,
+  kOnReadParsed,
   kRealListen,
   tlsSymbol,
   optionsSymbol,
@@ -47,6 +48,7 @@ const {
   STATUS_CODES,
   isTlsSymbol,
   hasServerResponseFinished,
+  NodeHTTPBodyReadState,
   drainMicrotasks,
   setServerCustomOptions,
   setServerAppFlags,
@@ -1317,6 +1319,18 @@ function clearUpgradeIncoming(socket) {
   socket[kUpgradeIncoming] = undefined;
 }
 
+// Node's UpgradeStream._read: resume the request only while its body is incomplete.
+function resumePausedUpgradeIncoming(socket) {
+  const req = socket[kUpgradeIncoming];
+  if (req === undefined) return;
+  const response = socket[kHandle]?.response;
+  if (response && (response.hasBody & NodeHTTPBodyReadState.done) !== 0) {
+    socket[kUpgradeIncoming] = undefined;
+  } else {
+    req.resume();
+  }
+}
+
 // Node.js hands the connection over to 'connect'/'upgrade' listeners with the
 // connection-listener set removed (onParserExecuteCommon removes its data/end/
 // close/drain/error/timeout listeners) and only net.Socket's own 'end' listener
@@ -1771,7 +1785,11 @@ function getNodeHTTPServerSocket() {
         // belong to the request stream, never to the raw upgrade stream, and the
         // socket does not end when the request body does.
         response?.resume();
-        upgradeIncoming.resume();
+        // Not paused: req.complete is false in the listener, so it can wait for 'end' with no reader.
+        if (upgradeIncoming.readableFlowing !== false) upgradeIncoming.resume();
+        // The 'upgrade' listener runs before the rest of its read is parsed; that rest can complete the body.
+        else if (response?.notifyWhenReadParsed()) this[kOnReadParsed] = resumePausedUpgradeIncoming;
+        else resumePausedUpgradeIncoming(this);
         return;
       }
       response?.resume();
