@@ -676,11 +676,7 @@ impl NodeHTTPResponse {
             return false;
         }
 
-        // The body keeps the request pending only while uws still owes it
-        // chunks. A fin that arrived while the request was paused leaves
-        // `body_read_state` at `Pending` so JS can still drain the buffered
-        // tail (`drainRequestBody`), but uws will not deliver anything further,
-        // so for this accounting that body is complete as well.
+        // The body keeps the request pending only while uws still owes it chunks.
         let body_pending = self.body_still_arriving();
 
         // A raw 'upgrade'/'connect' tunnel handoff ends the HTTP exchange the
@@ -1522,7 +1518,7 @@ impl NodeHTTPResponse {
         if chunk.is_empty() {
             return JSValue::UNDEFINED;
         }
-        // TODO: emit an 'error' event instead of reporting an uncaught exception.
+        // No 'error' event carries this failure, so it is reported as an uncaught exception.
         match jsc::ArrayBuffer::create_buffer(global_this, chunk) {
             Ok(b) => b,
             Err(err) => {
